@@ -19,7 +19,10 @@ export default function RegisterScreen() {
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: (data: any) => {
       Alert.alert("Success", "Account created successfully! Please log in.");
-      router.replace("/(auth)/login");
+      router.replace({
+        pathname: "/(auth)/login",
+        params: { email: data.email }
+      } as any);
     },
     onError: (error: any) => {
       Alert.alert("Registration Failed", error.message || "Failed to create account");

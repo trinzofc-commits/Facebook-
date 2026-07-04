@@ -1,22 +1,41 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { setSessionToken, setUserInfo } from "@/lib/_core/auth";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const colors = useColors();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    if (params.email) {
+      setEmail(params.email as string);
+    }
+  }, [params.email]);
   const [loading, setLoading] = useState(false);
 
   const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       // Save token and user data
       console.log("Login successful:", data);
+      if (data.token) {
+        await setSessionToken(data.token);
+      }
+      await setUserInfo({
+        id: data.id,
+        email: data.email,
+        name: `${data.firstName} ${data.lastName}`,
+        openId: data.id.toString(),
+        loginMethod: "email",
+        lastSignedIn: new Date(),
+      });
       // Navigate to home screen
       router.replace("/(tabs)");
     },

@@ -1,82 +1,50 @@
-import { View, Text, ScrollView, TouchableOpacity, FlatList, Image, Pressable } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, FlatList, Image, ActivityIndicator, RefreshControl } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-
-interface Post {
-  id: number;
-  author: string;
-  avatar: string;
-  timestamp: string;
-  content: string;
-  image?: string;
-  likes: number;
-  comments: number;
-  shares: number;
-  liked: boolean;
-}
-
-const MOCK_POSTS: Post[] = [
-  {
-    id: 1,
-    author: "John Doe",
-    avatar: "https://i.pravatar.cc/150?img=1",
-    timestamp: "2 hours ago",
-    content: "Just finished an amazing project! Feeling proud 🎉",
-    image: "https://via.placeholder.com/400x300?text=Project",
-    likes: 234,
-    comments: 45,
-    shares: 12,
-    liked: false,
-  },
-  {
-    id: 2,
-    author: "Jane Smith",
-    avatar: "https://i.pravatar.cc/150?img=2",
-    timestamp: "4 hours ago",
-    content: "Beautiful sunset today! Nature is amazing 🌅",
-    image: "https://via.placeholder.com/400x300?text=Sunset",
-    likes: 567,
-    comments: 89,
-    shares: 34,
-    liked: false,
-  },
-  {
-    id: 3,
-    author: "Mike Johnson",
-    avatar: "https://i.pravatar.cc/150?img=3",
-    timestamp: "6 hours ago",
-    content: "Who else loves coding? Let's connect! 💻",
-    likes: 123,
-    comments: 23,
-    shares: 5,
-    liked: false,
-  },
-];
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function HomeScreen() {
   const colors = useColors();
   const router = useRouter();
-  const [posts, setPosts] = useState(MOCK_POSTS);
+  const { user } = useAuth();
+  
+  const { data: rawPosts, isLoading, refetch, isRefetching } = trpc.social.getFeed.useQuery({
+    limit: 20,
+  });
+
+  const posts = useMemo(() => {
+    if (!rawPosts) return [];
+    return rawPosts.map((post: any) => ({
+      id: post.id,
+      author: "User " + post.userId, // In real app, we'd join user info
+      avatar: `https://i.pravatar.cc/150?u=${post.userId}`,
+      timestamp: new Date(post.createdAt).toLocaleDateString(),
+      content: post.content || "",
+      image: post.images?.[0],
+      likes: post.likes || 0,
+      comments: post.commentsCount || 0,
+      shares: post.sharesCount || 0,
+      liked: false, // In real app, we'd check if current user liked it
+    }));
+  }, [rawPosts]);
+
+  const likeMutation = trpc.social.likePost.useMutation({
+    onSuccess: () => {
+      refetch();
+    }
+  });
 
   const handleLike = (postId: number) => {
-    setPosts(
-      posts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              liked: !post.liked,
-              likes: post.liked ? post.likes - 1 : post.likes + 1,
-            }
-          : post
-      )
-    );
+    if (!user) return;
+    likeMutation.mutate({ userId: user.id, postId });
   };
 
-  const renderPost = ({ item }: { item: Post }) => (
+  const renderPost = ({ item }: { item: any }) => (
     <View className={cn("bg-surface rounded-lg mb-4 overflow-hidden", "border border-border")}>
       {/* Post Header */}
       <View className="flex-row items-center p-3 border-b border-border">
@@ -147,11 +115,19 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer className="bg-background p-0">
-      <FlatList
-        data={posts}
-        renderItem={renderPost}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={{ padding: 12 }}
+      {isLoading && !isRefetching ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={posts}
+          renderItem={renderPost}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={{ padding: 12 }}
+          refreshControl={
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+          }
         ListHeaderComponent={
           <View className="mb-4">
             {/* Create Post Section */}
@@ -166,7 +142,7 @@ export default function HomeScreen() {
                     "flex-1 bg-background rounded-full px-4 py-2",
                     "border border-border"
                   )}
-                  onPress={() => router.push("/(tabs)" as any)}
+                  onPress={() => router.push("/create-post" as any)}
                 >
                   <Text className="text-muted">What's on your mind?</Text>
                 </TouchableOpacity>
